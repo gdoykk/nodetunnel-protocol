@@ -1,15 +1,67 @@
-pub const AUTHENTICATE: u8 = 0;
-pub const CLIENT_AUTHENTICATED: u8 = 1;
-pub const CREATE_ROOM: u8 = 2;
-pub const JOIN_ROOM: u8 = 3;
-pub const CONNECTED_TO_ROOM: u8 = 4;
-pub const PEER_JOINED: u8 = 5;
-pub const PEER_LEFT: u8 = 6;
-pub const GAME_DATA: u8 = 7;
-pub const FORCE_DISCONNECT: u8 = 8;
-pub const ERROR_PACKET: u8 = 9;
-pub const REQ_ROOMS: u8 = 10;
-pub const GET_ROOMS: u8 = 11;
-pub const UPDATE_ROOM: u8 = 12;
-pub const JOIN_RES: u8 = 13;
-pub const PEER_JOIN_ATTEMPT: u8 = 14;
+use crate::error::ProtocolError;
+
+/// Identifies the kind of a [`crate::packet::Packet`] on the wire.
+///
+/// This is a real enum (rather than a set of loose `u8` constants) so that:
+/// - the compiler enforces exhaustive handling wherever a `PacketKind` is
+///   matched on,
+/// - invalid bytes are rejected by a single `TryFrom` conversion instead of
+///   a hand-written `_ => Err(...)` fallback that has to be kept in sync,
+/// - the discriminant <-> variant mapping lives in exactly one place.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(u8)]
+pub enum PacketKind {
+    Authenticate = 0,
+    ClientAuthenticated = 1,
+    CreateRoom = 2,
+    JoinRoom = 3,
+    ConnectedToRoom = 4,
+    PeerJoined = 5,
+    PeerLeft = 6,
+    GameData = 7,
+    ForceDisconnect = 8,
+    ErrorPacket = 9,
+    ReqRooms = 10,
+    GetRooms = 11,
+    UpdateRoom = 12,
+    JoinRes = 13,
+    PeerJoinAttempt = 14,
+}
+
+impl PacketKind {
+    #[must_use]
+    pub const fn as_u8(self) -> u8 {
+        self as u8
+    }
+}
+
+impl TryFrom<u8> for PacketKind {
+    type Error = ProtocolError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        Ok(match value {
+            0 => Self::Authenticate,
+            1 => Self::ClientAuthenticated,
+            2 => Self::CreateRoom,
+            3 => Self::JoinRoom,
+            4 => Self::ConnectedToRoom,
+            5 => Self::PeerJoined,
+            6 => Self::PeerLeft,
+            7 => Self::GameData,
+            8 => Self::ForceDisconnect,
+            9 => Self::ErrorPacket,
+            10 => Self::ReqRooms,
+            11 => Self::GetRooms,
+            12 => Self::UpdateRoom,
+            13 => Self::JoinRes,
+            14 => Self::PeerJoinAttempt,
+            other => return Err(ProtocolError::UnknownPacketType(other)),
+        })
+    }
+}
+
+impl From<PacketKind> for u8 {
+    fn from(value: PacketKind) -> Self {
+        value.as_u8()
+    }
+}
