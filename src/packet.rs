@@ -215,3 +215,114 @@ impl Packet {
         buf
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assert_round_trips(packet: Packet) {
+        let bytes = packet.to_bytes();
+        let decoded = Packet::from_bytes(&bytes).unwrap_or_else(|e| {
+            panic!("failed to decode {packet:?} from its own encoding: {e}")
+        });
+
+        assert_eq!(
+            decoded.to_bytes(),
+            bytes,
+            "re-encoding a decoded packet produced different bytes for {packet:?}"
+        );
+    }
+
+    #[test]
+    fn authenticate_round_trips() {
+        assert_round_trips(Packet::Authenticate {
+            app_id: "my-app".to_string(),
+            version: "1.1.0_beta".to_string(),
+        });
+    }
+
+    #[test]
+    fn create_room_round_trips() {
+        assert_round_trips(Packet::CreateRoom { is_public: true, metadata: "hello".to_string() });
+        assert_round_trips(Packet::CreateRoom { is_public: false, metadata: String::new() });
+    }
+
+    #[test]
+    fn get_rooms_round_trips_with_join_code_field() {
+        // Regression test: `RoomInfo` previously had its wire-serialized
+        // field named `join_code` on the relay server and `id` on the
+        // Godot client, even though both encoded/decoded it identically.
+        // This test exercises the shared type both sides now use.
+        assert_round_trips(Packet::GetRooms {
+            rooms: vec![
+                RoomInfo { join_code: "ABCDE".to_string(), metadata: "meta".to_string() },
+                RoomInfo { join_code: "12345".to_string(), metadata: String::new() },
+            ],
+        });
+    }
+
+    #[test]
+    fn join_res_round_trips_client_id() {
+        assert_round_trips(Packet::JoinRes {
+            target_id: ClientId::new(42),
+            room_id: "ABCDE".to_string(),
+            allowed: true,
+        });
+    }
+
+    #[test]
+    fn peer_join_attempt_round_trips_client_id() {
+        assert_round_trips(Packet::PeerJoinAttempt {
+            target_id: ClientId::new(9_999_999_999),
+            metadata: "join metadata".to_string(),
+        });
+    }
+
+    #[test]
+    fn game_data_round_trips_arbitrary_bytes() {
+        assert_round_trips(Packet::GameData {
+            from_peer: -7,
+            data: vec![0, 1, 2, 255, 254, 253],
+        });
+    }
+
+    #[test]
+    fn all_variants_have_matching_kind() {
+        let samples = vec![
+            Packet::Authenticate { app_id: String::new(), version: String::new() },
+            Packet::ClientAuthenticated,
+            Packet::CreateRoom { is_public: false, metadata: String::new() },
+            Packet::ReqRooms,
+            Packet::GetRooms { rooms: vec![] },
+            Packet::UpdateRoom { room_id: String::new(), metadata: String::new() },
+            Packet::ReqJoin { room_id: String::new(), metadata: String::new() },
+            Packet::JoinRes { target_id: ClientId::new(1), room_id: String::new(), allowed: false },
+            Packet::ConnectedToRoom { room_id: String::new(), peer_id: 0 },
+            Packet::PeerJoinAttempt { target_id: ClientId::new(1), metadata: String::new() },
+            Packet::PeerJoinedRoom { peer_id: 0 },
+            Packet::PeerLeftRoom { peer_id: 0 },
+            Packet::GameData { from_peer: 0, data: vec![] },
+            Packet::ForceDisconnect,
+            Packet::Error { error_code: 0, error_message: String::new() },
+        ];
+
+        for packet in samples {
+            let bytes = packet.to_bytes();
+            assert_eq!(bytes[0], packet.kind().as_u8());
+            assert_round_trips(packet);
+        }
+    }
+
+    #[test]
+    fn empty_bytes_is_rejected() {
+        assert!(matches!(Packet::from_bytes(&[]), Err(ProtocolError::EmptyPacket)));
+    }
+
+    #[test]
+    fn unknown_packet_id_is_rejected() {
+        assert!(matches!(
+            Packet::from_bytes(&[255]),
+            Err(ProtocolError::UnknownPacketType(255))
+        ));
+    }
+}
