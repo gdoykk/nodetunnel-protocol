@@ -73,7 +73,7 @@ impl Packet {
 
             PacketKind::CreateRoom => {
                 let (is_public, r) = read_bool(rest)?;
-                let metadata = read_string(r).map(|(name, _)| name).unwrap_or_default();
+                let (metadata, _) = read_string(r)?;
 
                 Packet::CreateRoom { is_public, metadata }
             }
@@ -323,6 +323,24 @@ mod tests {
         assert!(matches!(
             Packet::from_bytes(&[255]),
             Err(ProtocolError::UnknownPacketType(255))
+        ));
+    }
+
+    #[test]
+    fn truncated_create_room_metadata_is_rejected() {
+        // Regression test: `CreateRoom` decoding previously swallowed any
+        // error from reading the metadata string via `unwrap_or_default`,
+        // silently succeeding with empty metadata for a truncated/corrupt
+        // packet instead of returning an error like every other variant.
+        let mut bytes = vec![PacketKind::CreateRoom.as_u8()];
+        push_bool(&mut bytes, true);
+        // Claim a metadata string of length 10, but provide no bytes for
+        // it at all — this should be rejected, not decoded as `""`.
+        push_i32(&mut bytes, 10);
+
+        assert!(matches!(
+            Packet::from_bytes(&bytes),
+            Err(ProtocolError::NotEnoughBytes(_))
         ));
     }
 }
