@@ -5,11 +5,13 @@
 //! other while encoding/decoding identically).
 
 pub mod client_id;
+pub mod error;
+pub mod error_code;
 pub mod ids;
 pub mod packet;
 mod serialize;
 pub mod version;
-pub mod error;
 
 pub use client_id::ClientId;
+pub use error_code::ErrorCode;
 pub use ids::PacketKind;

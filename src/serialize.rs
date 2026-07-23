@@ -3,7 +3,11 @@ use crate::packet::RoomInfo;
 
 pub fn read_bool(bytes: &[u8]) -> Result<(bool, &[u8]), ProtocolError> {
     let (value, rest) = read_i32(bytes)?;
-    Ok((value != 0, rest))
+    match value {
+        0 => Ok((false, rest)),
+        1 => Ok((true, rest)),
+        other => Err(ProtocolError::InvalidBoolean(other)),
+    }
 }
 
 pub fn read_i32(bytes: &[u8]) -> Result<(i32, &[u8]), ProtocolError> {
@@ -29,23 +33,45 @@ pub fn read_u64(bytes: &[u8]) -> Result<(u64, &[u8]), ProtocolError> {
     Ok((value, &bytes[8..]))
 }
 
-pub fn read_string(bytes: &[u8]) -> Result<(String, &[u8]), ProtocolError> {
+pub fn read_fixed_32(bytes: &[u8]) -> Result<([u8; 32], &[u8]), ProtocolError> {
+    if bytes.len() < 32 {
+        return Err(ProtocolError::NotEnoughBytes(format!(
+            "for 32-byte value (need 32 bytes, have {})",
+            bytes.len()
+        )));
+    }
+    let value = bytes[..32].try_into()?;
+    Ok((value, &bytes[32..]))
+}
+
+pub fn read_string<'a>(
+    bytes: &'a [u8],
+    maximum: usize,
+    field: &'static str,
+) -> Result<(String, &'a [u8]), ProtocolError> {
     let (len, rest) = read_i32(bytes)?;
 
     if len < 0 {
         return Err(ProtocolError::NegativeVectorLength);
     }
 
-    if rest.len() < len as usize {
+    let len = len as usize;
+    if len > maximum {
+        return Err(ProtocolError::FieldTooLarge {
+            field,
+            actual: len,
+            maximum,
+        });
+    }
+    if rest.len() < len {
         return Err(ProtocolError::NotEnoughBytes(format!(
-            "for string (need {} bytes, have {})",
-            len,
+            "for string (need {len} bytes, have {})",
             rest.len()
         )));
     }
 
-    let string_bytes = &rest[..len as usize];
-    let remaining = &rest[len as usize..];
+    let string_bytes = &rest[..len];
+    let remaining = &rest[len..];
 
     Ok((String::from_utf8(string_bytes.to_vec())?, remaining))
 }
@@ -68,11 +94,21 @@ pub fn push_u64(buf: &mut Vec<u8>, value: u64) {
     buf.extend(value.to_be_bytes());
 }
 
-pub fn read_room_info(bytes: &[u8]) -> Result<(RoomInfo, &[u8]), ProtocolError> {
-    let (join_code, r) = read_string(bytes)?;
-    let (metadata, r) = read_string(r)?;
+pub fn push_fixed_32(buf: &mut Vec<u8>, value: &[u8; 32]) {
+    buf.extend(value);
+}
 
-    Ok((RoomInfo { join_code, metadata }, r))
+pub fn read_room_info(bytes: &[u8]) -> Result<(RoomInfo, &[u8]), ProtocolError> {
+    let (join_code, r) = read_string(bytes, crate::packet::MAX_ROOM_CODE_BYTES, "room join code")?;
+    let (metadata, r) = read_string(r, crate::packet::MAX_ROOM_METADATA_BYTES, "room metadata")?;
+
+    Ok((
+        RoomInfo {
+            join_code,
+            metadata,
+        },
+        r,
+    ))
 }
 
 pub fn read_vec_room_info(bytes: &[u8]) -> Result<(Vec<RoomInfo>, &[u8]), ProtocolError> {
@@ -82,7 +118,17 @@ pub fn read_vec_room_info(bytes: &[u8]) -> Result<(Vec<RoomInfo>, &[u8]), Protoc
         return Err(ProtocolError::NegativeVectorLength);
     }
 
-    let mut rooms = Vec::with_capacity(len as usize);
+    let len = len as usize;
+    let structural_maximum = rest.len() / 8;
+    let maximum = crate::packet::MAX_ROOMS_PER_PAGE.min(structural_maximum);
+    if len > maximum {
+        return Err(ProtocolError::TooManyRooms {
+            actual: len,
+            maximum,
+        });
+    }
+
+    let mut rooms = Vec::with_capacity(len);
     for _ in 0..len {
         let (room, remaining) = read_room_info(rest)?;
         rooms.push(room);

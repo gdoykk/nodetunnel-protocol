@@ -8,6 +8,28 @@ pub enum ProtocolError {
     #[error("unknown packet type: {0}")]
     UnknownPacketType(u8),
 
+    #[error("unknown error code: {0}")]
+    UnknownErrorCode(i32),
+
+    #[error("packet is {actual} bytes; maximum is {maximum}")]
+    PacketTooLarge { actual: usize, maximum: usize },
+
+    #[error("{field} is {actual} bytes; maximum is {maximum}")]
+    FieldTooLarge {
+        field: &'static str,
+        actual: usize,
+        maximum: usize,
+    },
+
+    #[error("room count {actual} exceeds maximum {maximum}")]
+    TooManyRooms { actual: usize, maximum: usize },
+
+    #[error("invalid boolean value {0}; expected 0 or 1")]
+    InvalidBoolean(i32),
+
+    #[error("packet has {0} trailing bytes")]
+    TrailingBytes(usize),
+
     #[error("not enough bytes {0}")]
     NotEnoughBytes(String),
 

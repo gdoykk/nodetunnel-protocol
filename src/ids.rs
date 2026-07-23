@@ -26,6 +26,13 @@ pub enum PacketKind {
     UpdateRoom = 12,
     JoinRes = 13,
     PeerJoinAttempt = 14,
+    Hello = 15,
+    Cookie = 16,
+    Ping = 17,
+    Pong = 18,
+    Disconnect = 19,
+    DisconnectPeer = 20,
+    SendFailed = 21,
 }
 
 impl PacketKind {
@@ -55,6 +62,13 @@ impl TryFrom<u8> for PacketKind {
             12 => Self::UpdateRoom,
             13 => Self::JoinRes,
             14 => Self::PeerJoinAttempt,
+            15 => Self::Hello,
+            16 => Self::Cookie,
+            17 => Self::Ping,
+            18 => Self::Pong,
+            19 => Self::Disconnect,
+            20 => Self::DisconnectPeer,
+            21 => Self::SendFailed,
             other => return Err(ProtocolError::UnknownPacketType(other)),
         })
     }

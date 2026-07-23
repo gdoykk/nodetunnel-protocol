@@ -1,0 +1,19 @@
+[package]
+name = "nodetunnel-protocol-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+nodetunnel-protocol = { path = ".." }
+
+[[bin]]
+name = "from_bytes"
+path = "fuzz_targets/from_bytes.rs"
+test = false
+doc = false
+bench = false
